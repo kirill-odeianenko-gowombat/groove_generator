@@ -1,26 +1,48 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@layer theme, base, components, utilities;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer theme {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --radius: 12px;
+    --glass-bg: rgba(255, 255, 255, 0.18);
+    --glass-border: rgba(255, 255, 255, 0.35);
+    --glass-shadow: 0 4px 20px rgba(31, 38, 135, 0.25), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  body {
+    /* Soft purple gradient background like the mock */
+    background: radial-gradient(1200px 800px at 50% -200px, #c084fc 0%, rgba(192,132,252,0.6) 25%, rgba(168,85,247,0.45) 45%, rgba(147,51,234,0.55) 75%, rgba(109,40,217,0.7) 100%),
+                linear-gradient(180deg, #b26cf7 0%, #7e6cf7 100%);
+    color: #fff;
+  }
+}
+
+/* Glassmorphism utilities */
+@layer utilities {
+  .glass-card {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    box-shadow: var(--glass-shadow);
+  }
+  .glass-pill {
+    background: rgba(255, 255, 255, 0.22);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 9999px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.45) inset;
+  }
+  .glass-input {
+    background: rgba(255, 255, 255, 0.3);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 16px;
+  }
 }

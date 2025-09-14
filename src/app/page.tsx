@@ -1,103 +1,253 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Play, Mic, Volume2, VolumeX } from "lucide-react";
+import { motion } from "framer-motion";
 import Image from "next/image";
 
-export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+interface Track {
+  name: string;
+  id: number;
+  url: string | null;
+  muted?: boolean;
+}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+type RecognitionEvent = { results: Array<Array<{ transcript: string }>> };
+
+interface WebkitSpeechRecognition {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: RecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+}
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition: new () => WebkitSpeechRecognition;
+  }
+}
+
+export default function GrooveApp() {
+  const [tracks, setTracks] = useState<Track[]>([{ name: "Drums", id: Date.now(), url: null, muted: false }]);
+  const [history, setHistory] = useState<string[]>([]);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<WebkitSpeechRecognition | null>(null);
+  const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
+
+  const instrumentDefs: { name: string; icon: string }[] = [
+    { name: "Piano", icon: "/icons/keyboard.png" },
+    { name: "Saxophone", icon: "/icons/saxophone.png" },
+    { name: "Electric Guitar", icon: "/icons/electric-guitar.png" },
+    { name: "Bass Guitar", icon: "/icons/bass-guitar.png" },
+    { name: "Electric Bass", icon: "/icons/electric-bass.png" },
+    { name: "Drum Set", icon: "/icons/drum-set.png" },
+    { name: "Maracas", icon: "/icons/maracas.png" },
+    { name: "Trumpet", icon: "/icons/trumpet.png" },
+  ];
+  const availableInstruments = instrumentDefs.map((i) => i.name);
+
+  async function generateTrack(inst: string): Promise<string | null> {
+    try {
+      const res = await fetch("https://api.elevenlabs.io/v1/music/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": process.env.NEXT_PUBLIC_ELEVEN_API_KEY || "",
+        },
+        body: JSON.stringify({
+          prompt: `Generate a ${inst} groove track`,
+          duration: 10,
+          format: "mp3"
+        }),
+      });
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.error("Generation error:", err);
+      return null;
+    }
+  }
+
+  async function addTrack(inst: string) {
+    if (!tracks.find((t) => t.name === inst)) {
+      const url = await generateTrack(inst);
+      const newTrack: Track = { name: inst, id: Date.now(), url, muted: false };
+      setTracks([...tracks, newTrack]);
+      setHistory([...history, `Added ${inst} as a new track`]);
+    }
+  }
+
+  async function playAll() {
+    const refs = audioRefs.current;
+    tracks.forEach((t) => {
+      const audio = refs.get(t.id);
+      if (audio && t.url) {
+        try {
+          audio.currentTime = 0;
+          audio.muted = !!t.muted;
+          void audio.play();
+        } catch {}
+      }
+    });
+  }
+
+  function toggleMute(trackId: number) {
+    setTracks((prev) => prev.map((t) => (t.id === trackId ? { ...t, muted: !t.muted } : t)));
+    const audio = audioRefs.current.get(trackId);
+    if (audio) audio.muted = !audio.muted;
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
+      recognitionRef.current = new window.webkitSpeechRecognition();
+      const rec = recognitionRef.current;
+      rec.lang = "en-US";
+      rec.continuous = false;
+      rec.interimResults = false;
+
+      rec.onresult = (event: RecognitionEvent) => {
+        const command = event.results[0][0].transcript;
+        const match = availableInstruments.find((inst) =>
+          command.toLowerCase().includes(inst.toLowerCase())
+        );
+        if (match) addTrack(match);
+      };
+
+      rec.onend = () => setListening(false);
+    }
+    // We intentionally do not include addTrack/availableInstruments to avoid
+    // reinitializing recognition on every render. These values are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function toggleListening() {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    if (listening) {
+      rec.stop();
+      setListening(false);
+    } else {
+      rec.start();
+      setListening(true);
+    }
+  }
+
+  return (
+    <div className="min-h-screen px-6 py-16">
+      <motion.h1
+        className="text-center text-4xl sm:text-5xl font-extrabold drop-shadow mb-2"
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        Mini Groove Generator
+      </motion.h1>
+      <p className="text-center text-white/80 mb-8">Build your groove, layer by layer</p>
+
+      {/* Current Tracks Card */}
+      <Card className="max-w-2xl mx-auto glass-card text-white/90">
+        <CardContent className="p-8">
+          <h2 className="font-semibold mb-4 text-neutral-800">Current Tracks</h2>
+          <motion.div className="space-y-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            {tracks.map((track, index) => (
+              <motion.div
+                key={track.id}
+                className="flex items-center justify-between glass-input px-5 py-3"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <span className="font-medium text-white/95">{track.name}</span>
+                {track.url ? (
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={() => toggleMute(track.id)}
+                      className="glass-pill h-9 w-9 p-0 rounded-full flex items-center justify-center"
+                      aria-label={track.muted ? "Unmute" : "Mute"}
+                      title={track.muted ? "Unmute" : "Mute"}
+                    >
+                      {track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                    </Button>
+                    <audio
+                      ref={(el) => {
+                        if (el) audioRefs.current.set(track.id, el);
+                        else audioRefs.current.delete(track.id);
+                      }}
+                      muted={track.muted}
+                      controls
+                      src={track.url}
+                      className="h-8"
+                    />
+                  </div>
+                ) : (
+                  <span className="text-sm text-white/70">loading...</span>
+                )}
+              </motion.div>
+            ))}
+          </motion.div>
+
+          <div className="flex gap-3 mt-6">
+            <Button onClick={playAll} className="glass-pill px-6 py-3 text-white flex items-center gap-2 shadow">
+              <Play size={18} /> Play All
+            </Button>
+            <Button
+              onClick={toggleListening}
+              className={`glass-pill px-6 py-3 flex items-center gap-2 ${listening ? "!bg-red-300/40" : ""}`}
+            >
+              <Mic size={18} /> {listening ? "Stop" : "Voice Add"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add instruments */}
+      <Card className="max-w-2xl mx-auto mt-8 glass-card text-white/90">
+        <CardContent className="p-8">
+          <h2 className="font-semibold mb-4 text-white/90">Add instruments</h2>
+          <div className="grid grid-cols-4 gap-5 place-items-center">
+            {instrumentDefs.map(({ name, icon }) => (
+              <Button
+                key={name}
+                onClick={() => addTrack(name)}
+                aria-label={name}
+                title={name}
+                className="glass-pill rounded-full h-14 w-14 sm:h-16 sm:w-16 p-0 text-white flex items-center justify-center hover:brightness-110"
+              >
+                <Image src={icon} alt={name} width={28} height={28} className="h-7 w-7 sm:h-8 sm:w-8" />
+                <span className="sr-only">{name}</span>
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* History */}
+      <Card className="max-w-2xl mx-auto mt-8 glass-card text-white/90">
+        <CardContent className="p-6">
+          <h2 className="text-lg font-semibold text-white/90 mb-4">History</h2>
+          <div className="space-y-2">
+            {history.length === 0 && (
+              <div className="text-white/70 text-sm">• No changes yet</div>
+            )}
+            {history.map((h, i) => (
+              <motion.div
+                key={i}
+                className="text-sm text-white/90 glass-input px-3 py-2"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                {h}
+              </motion.div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

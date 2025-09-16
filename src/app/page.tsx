@@ -52,6 +52,18 @@ export default function GrooveApp() {
         console.warn('Failed to parse saved tracks:', e);
       }
     }
+    
+    // Initialize Web Audio API
+    if (typeof window !== 'undefined' && 'AudioContext' in window) {
+      try {
+        audioContextRef.current = new AudioContext();
+        setWebAudioSupported(true);
+        console.log('🎧 Web Audio API initialized for seamless looping');
+      } catch (e) {
+        console.warn('⚠️ Web Audio API not supported, falling back to HTML5 audio');
+        setWebAudioSupported(false);
+      }
+    }
   }, []);
   
   // Save tracks to localStorage whenever they change (only on client)
@@ -65,6 +77,15 @@ export default function GrooveApp() {
   const [currentBPM, setCurrentBPM] = useState(120);
   const recognitionRef = useRef<WebkitSpeechRecognition | null>(null);
   const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
+  const loopHandlers = useRef<Map<number, () => void>>(new Map());
+  
+  // Web Audio API for seamless looping
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioBuffersRef = useRef<Map<number, AudioBuffer>>(new Map());
+  const sourceNodesRef = useRef<Map<number, AudioBufferSourceNode>>(new Map());
+  const gainNodesRef = useRef<Map<number, GainNode>>(new Map());
+  const [webAudioSupported, setWebAudioSupported] = useState(false);
+  const [isPlayingAll, setIsPlayingAll] = useState(false);
 
   const instrumentDefs: { name: string; emoji: string }[] = [
     { name: "Piano", emoji: "🎹" },
@@ -80,10 +101,113 @@ export default function GrooveApp() {
   
   // BPM presets for easy selection
   const bpmPresets = [80, 90, 100, 110, 120, 130, 140, 150];
-
-  async function generateTrack(inst: string): Promise<string | null> {
+  
+  // Calculate optimal duration for complete musical phrases
+  function calculateOptimalDuration(bpm: number, timeSignature: { beats: number, noteValue: number } = { beats: 4, noteValue: 4 }): number {
+    // Calculate seconds per beat
+    const secondsPerBeat = 60 / bpm;
+    
+    // Calculate seconds per measure/bar
+    const secondsPerBar = secondsPerBeat * timeSignature.beats;
+    
+    // Find the minimum number of bars that gives us at least 10 seconds
+    const minBars = Math.ceil(10 / secondsPerBar);
+    
+    // Calculate total duration in seconds (rounded to avoid floating point issues)
+    const durationSeconds = Math.round(minBars * secondsPerBar * 1000) / 1000;
+    
+    console.log(`🎵 Calculated duration for ${bpm} BPM: ${minBars} bars = ${durationSeconds.toFixed(2)} seconds`);
+    
+    return durationSeconds;
+  }
+  
+  // Show current optimal duration in UI
+  function getCurrentDuration(): string {
+    const duration = calculateOptimalDuration(currentBPM);
+    const bars = Math.ceil(10 / ((60 / currentBPM) * 4));
+    return `${bars} bars (${duration.toFixed(1)}s)`;
+  }
+  
+  // Load audio buffer for Web Audio API seamless looping
+  async function loadAudioBuffer(trackId: number, url: string): Promise<void> {
+    if (!audioContextRef.current || !webAudioSupported) return;
+    
     try {
-      console.log(`🎵 Generating ${inst} track...`);
+      console.log(`🎧 Loading audio buffer for track ${trackId}`);
+      
+      // Fetch audio data
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Decode audio data
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+      audioBuffersRef.current.set(trackId, audioBuffer);
+      
+      console.log(`✅ Audio buffer loaded for track ${trackId}, duration: ${audioBuffer.duration.toFixed(2)}s`);
+    } catch (error) {
+      console.error(`❌ Failed to load audio buffer for track ${trackId}:`, error);
+    }
+  }
+  
+  // Play track with Web Audio API (seamless looping)
+  function playTrackWebAudio(trackId: number, muted: boolean = false): void {
+    if (!audioContextRef.current || !webAudioSupported) return;
+    
+    const audioBuffer = audioBuffersRef.current.get(trackId);
+    if (!audioBuffer) return;
+    
+    // Stop existing source if playing
+    const existingSource = sourceNodesRef.current.get(trackId);
+    if (existingSource) {
+      existingSource.stop();
+      sourceNodesRef.current.delete(trackId);
+    }
+    
+    // Create new source node
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = audioBuffer;
+    source.loop = true; // Web Audio seamless loop!
+    
+    // Create gain node for volume control
+    const gainNode = audioContextRef.current.createGain();
+    gainNode.gain.value = muted ? 0 : 1;
+    
+    // Connect: source -> gain -> destination
+    source.connect(gainNode);
+    gainNode.connect(audioContextRef.current.destination);
+    
+    // Store references
+    sourceNodesRef.current.set(trackId, source);
+    gainNodesRef.current.set(trackId, gainNode);
+    
+    // Start playing
+    source.start();
+    console.log(`🎵 Started Web Audio seamless loop for track ${trackId}`);
+  }
+  
+  // Stop track with Web Audio API
+  function stopTrackWebAudio(trackId: number): void {
+    const source = sourceNodesRef.current.get(trackId);
+    if (source) {
+      source.stop();
+      sourceNodesRef.current.delete(trackId);
+      gainNodesRef.current.delete(trackId);
+      console.log(`⏹️ Stopped Web Audio track ${trackId}`);
+    }
+  }
+  
+  // Toggle mute with Web Audio API
+  function toggleMuteWebAudio(trackId: number, muted: boolean): void {
+    const gainNode = gainNodesRef.current.get(trackId);
+    if (gainNode) {
+      gainNode.gain.value = muted ? 0 : 1;
+    }
+  }
+
+  async function generateTrack(inst: string, style?: string): Promise<string | null> {
+    try {
+      const displayName = style ? `${style} ${inst}` : inst;
+      console.log(`🎵 Generating ${displayName} track...`);
       console.log(`🔧 Using API endpoint: /v1/music/compose`);
       
       // Build context from existing tracks
@@ -93,22 +217,28 @@ export default function GrooveApp() {
       
       let prompt = "";
       
+      const styleDescription = style ? ` in ${style} style` : '';
+      const instrumentWithStyle = style ? `${style} ${inst.toLowerCase()}` : inst.toLowerCase();
+      
       if (existingInstruments.length === 0) {
         // First track - establish the groove
-        prompt = `Generate ONLY a clean ${inst.toLowerCase()} track at ${currentBPM} BPM, 4/4 time signature. ISOLATED ${inst.toLowerCase()} ONLY - no other instruments, no drums, no bass, no melody. Pure ${inst.toLowerCase()} sound only. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${inst.toLowerCase()} groove from the very first moment.`;
+        prompt = `Generate ONLY a clean ${instrumentWithStyle} track at ${currentBPM} BPM, 4/4 time signature${styleDescription}. Create musical variation with different patterns, fills, and progressions - not just repetitive loops. ISOLATED ${inst.toLowerCase()} ONLY - no other instruments, no drums, no bass, no melody unless this IS the melody instrument. Pure ${inst.toLowerCase()} sound only. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} groove from the very first moment. IMPORTANT: Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping.`;
       } else {
         // Additional tracks - match existing groove
         const contextInstruments = existingInstruments.join(", ");
-        prompt = `Generate ONLY a clean ${inst.toLowerCase()} track that fits with existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time. IMPORTANT: Generate ISOLATED ${inst.toLowerCase()} ONLY - no other instruments mixed in, no accompaniment. Pure ${inst.toLowerCase()} track that will layer with existing instruments. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${inst.toLowerCase()} part from the very first moment.`;
+        prompt = `Generate ONLY a clean ${instrumentWithStyle} track that fits with existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time${styleDescription}. Create musical variation with complementary patterns, counter-melodies, and harmonic support - not just repetitive loops. IMPORTANT: Generate ISOLATED ${inst.toLowerCase()} ONLY - no other instruments mixed in, no accompaniment. Pure ${inst.toLowerCase()} track that will layer with existing instruments. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} part from the very first moment. IMPORTANT: Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping.`;
       }
+      
+      // Calculate optimal duration for current BPM to get complete musical phrases
+      const optimalDurationSeconds = calculateOptimalDuration(currentBPM);
+      
+      const durationMs = Math.round(optimalDurationSeconds * 1000);
       
       const requestBody = {
         prompt: prompt,
-        music_length_ms: 10000, // 10 seconds minimum as per API docs
-        // format: "mp3", // Not needed, API returns MP3 by default
-        // mode: "music", // Not a valid parameter
-        // quality: "standard", // Not a valid parameter
-        // seed: Math.floor(Date.now() / 1000), // Not a valid parameter for music API
+        music_length_ms: durationMs, // Dynamic duration based on BPM for complete phrases
+        model_id: "music_v1", // Explicitly specify model
+        output_format: "mp3_44100_128" // Explicitly specify output format
       };
       
       console.log(`🎵 ElevenLabs Request for ${inst}:`, requestBody);
@@ -143,20 +273,21 @@ export default function GrooveApp() {
     }
   }
 
-  async function addTrack(inst: string) {
-    console.log(`🎹 addTrack called for: ${inst}`);
+  async function addTrack(inst: string, style?: string) {
+    const displayName = style ? `${style} ${inst}` : inst;
+    console.log(`🎹 addTrack called for: ${displayName}`);
     console.log(`🎹 Current tracks count: ${tracks.length}`);
     console.log(`🎹 Current tracks:`, tracks.map(t => t.name));
     
-    if (!tracks.find((t) => t.name === inst)) {
+    if (!tracks.find((t) => t.name === displayName)) {
       // Add track with loading state first
-      const loadingTrack: Track = { name: inst, id: Date.now(), url: null, muted: false };
+      const loadingTrack: Track = { name: displayName, id: Date.now(), url: null, muted: false };
       console.log(`🎹 Adding loading track:`, loadingTrack);
       setTracks(prev => [...prev, loadingTrack]);
-      setHistory(prev => [...prev, `🎵 Adding ${inst}...`]);
+      setHistory(prev => [...prev, `🎵 Adding ${displayName}...`]);
       
       // Generate audio
-      const url = await generateTrack(inst);
+      const url = await generateTrack(inst, style);
       
       // Update track with generated audio or error state
       console.log(`🎹 Updating track ${loadingTrack.id} with URL:`, url ? 'SUCCESS' : 'FAILED');
@@ -172,80 +303,164 @@ export default function GrooveApp() {
         return updated;
       });
       
+      // Load audio buffer for Web Audio API if available
+      if (url && webAudioSupported) {
+        await loadAudioBuffer(loadingTrack.id, url);
+      }
+      
       // Update history
       setHistory(prev => [
         ...prev.slice(0, -1), // Remove loading message
-        url ? `✅ ${inst} added successfully` : `❌ Failed to generate ${inst}`
+        url ? `✅ ${displayName} added successfully` : `❌ Failed to generate ${displayName}`
       ]);
     }
   }
 
   async function playAll() {
+    // First, stop all HTML5 audio to prevent conflicts
     const refs = audioRefs.current;
-    const audioElements: HTMLAudioElement[] = [];
-    
-    // Prepare all audio elements
     tracks.forEach((t) => {
       const audio = refs.get(t.id);
       if (audio && t.url) {
+        audio.pause();
         audio.currentTime = 0;
-        audio.muted = !!t.muted;
-        audioElements.push(audio);
       }
     });
     
-    // Synchronize start - all tracks begin at exactly the same time
-    if (audioElements.length > 0) {
-      try {
-        // Start all simultaneously using Promise.all
-        await Promise.all(
-          audioElements.map(audio => {
-            return new Promise<void>((resolve) => {
-              audio.addEventListener('canplaythrough', () => resolve(), { once: true });
-              if (audio.readyState >= 4) resolve(); // Already loaded
-            });
-          })
-        );
-        
-        // Play all at the exact same moment
-        const startTime = performance.now();
-        audioElements.forEach(audio => {
-          audio.play().catch(() => {}); // Ignore play errors
-        });
-        
-        console.log(`🎵 Started ${audioElements.length} tracks synchronously at ${startTime}`);
-      } catch (err) {
-        console.error("Sync playback error:", err);
+    // Resume AudioContext if suspended (required by browsers)
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+    
+    setIsPlayingAll(true);
+    
+    if (webAudioSupported) {
+      // Use Web Audio API for perfect seamless looping
+      console.log(`🎧 Starting ${tracks.length} tracks with Web Audio API`);
+      const startTime = performance.now();
+      
+      tracks.forEach((track) => {
+        if (track.url) {
+          playTrackWebAudio(track.id, !!track.muted);
+        }
+      });
+      
+      console.log(`🎵 Started ${tracks.length} Web Audio tracks synchronously at ${startTime}`);
+    } else {
+      // Fallback to HTML5 audio
+      const audioElements: HTMLAudioElement[] = [];
+      
+      // Prepare all audio elements
+      tracks.forEach((t) => {
+        const audio = refs.get(t.id);
+        if (audio && t.url) {
+          audio.currentTime = 0;
+          audio.muted = !!t.muted;
+          audioElements.push(audio);
+        }
+      });
+      
+      // Synchronize start - all tracks begin at exactly the same time
+      if (audioElements.length > 0) {
+        try {
+          // Start all simultaneously using Promise.all
+          await Promise.all(
+            audioElements.map(audio => {
+              return new Promise<void>((resolve) => {
+                audio.addEventListener('canplaythrough', () => resolve(), { once: true });
+                if (audio.readyState >= 4) resolve(); // Already loaded
+              });
+            })
+          );
+          
+          // Play all at the exact same moment
+          const startTime = performance.now();
+          audioElements.forEach(audio => {
+            audio.play().catch(() => {}); // Ignore play errors
+          });
+          
+          console.log(`🎵 Started ${audioElements.length} HTML5 tracks synchronously at ${startTime}`);
+        } catch (err) {
+          console.error("Sync playback error:", err);
+        }
       }
     }
   }
 
   function stopAll() {
+    setIsPlayingAll(false);
+    
+    // ALWAYS stop both Web Audio AND HTML5 audio to prevent conflicts
+    
+    // Stop Web Audio tracks
+    if (webAudioSupported) {
+      tracks.forEach((track) => {
+        stopTrackWebAudio(track.id);
+      });
+      console.log(`⏹️ Stopped all Web Audio tracks`);
+    }
+    
+    // Also stop HTML5 audio tracks
     const refs = audioRefs.current;
+    const handlers = loopHandlers.current;
+    
     tracks.forEach((t) => {
       const audio = refs.get(t.id);
+      const handler = handlers.get(t.id);
+      
       if (audio && t.url) {
         audio.pause();
         audio.currentTime = 0;
+        
+        // Remove event listener using stored handler
+        if (handler) {
+          audio.removeEventListener('ended', handler);
+          handlers.delete(t.id);
+        }
       }
     });
-    console.log(`⏹️ Stopped all tracks`);
+    console.log(`⏹️ Stopped all HTML5 tracks`);
   }
 
   function toggleMute(trackId: number) {
-    setTracks((prev) => prev.map((t) => (t.id === trackId ? { ...t, muted: !t.muted } : t)));
-    const audio = audioRefs.current.get(trackId);
-    if (audio) audio.muted = !audio.muted;
+    const track = tracks.find(t => t.id === trackId);
+    const newMutedState = !track?.muted;
+    
+    setTracks((prev) => prev.map((t) => (t.id === trackId ? { ...t, muted: newMutedState } : t)));
+    
+    if (isPlayingAll && webAudioSupported) {
+      // Toggle mute with Web Audio API when playing all
+      toggleMuteWebAudio(trackId, newMutedState);
+    } else {
+      // Fallback to HTML5 audio or when not playing all
+      const audio = audioRefs.current.get(trackId);
+      if (audio) audio.muted = newMutedState;
+    }
   }
 
   function removeTrack(trackId: number) {
     const track = tracks.find(t => t.id === trackId);
     if (track) {
-      // Stop and clean up audio
+      // Stop Web Audio track if it's playing
+      if (webAudioSupported) {
+        stopTrackWebAudio(trackId);
+        audioBuffersRef.current.delete(trackId);
+      }
+      
+      // Stop and clean up HTML5 audio
       const audio = audioRefs.current.get(trackId);
+      const handler = loopHandlers.current.get(trackId);
+      
       if (audio) {
         audio.pause();
         audio.currentTime = 0;
+        
+        // Remove loop handler
+        if (handler) {
+          audio.removeEventListener('ended', handler);
+          loopHandlers.current.delete(trackId);
+        }
+        
         if (track.url) {
           URL.revokeObjectURL(track.url); // Clean up blob URL
         }
@@ -271,6 +486,36 @@ export default function GrooveApp() {
       rec.onresult = (event: RecognitionEvent) => {
         const command = event.results[0][0].transcript.toLowerCase();
         console.log(`🎤 Voice command: "${command}"`);
+        
+        // Parse style and instrument from command
+        function parseVoiceCommand(command: string): { instrument?: string; style?: string } {
+          // Common musical styles
+          const styles = [
+            'jazz', 'rock', 'blues', 'funk', 'funky', 'classical', 'acoustic', 'electric',
+            'latin', 'reggae', 'country', 'pop', 'metal', 'punk', 'ambient', 'electronic',
+            'hip hop', 'rap', 'rnb', 'soul', 'disco', 'techno', 'house', 'dubstep',
+            'джаз', 'рок', 'блюз', 'фанк', 'классика', 'акустик', 'электрик', 'метал'
+          ];
+          
+          let detectedStyle = '';
+          let remainingCommand = command;
+          
+          // Check for style keywords
+          for (const style of styles) {
+            if (command.includes(style)) {
+              detectedStyle = style;
+              remainingCommand = command.replace(new RegExp(style, 'gi'), '').trim();
+              break;
+            }
+          }
+          
+          return { 
+            instrument: remainingCommand || command, 
+            style: detectedStyle || undefined 
+          };
+        }
+        
+        const { instrument: commandInstrument, style: commandStyle } = parseVoiceCommand(command);
         
         // Enhanced matching with synonyms and variations (English + Russian)
         const instrumentMap: { [key: string]: string } = {
@@ -320,13 +565,13 @@ export default function GrooveApp() {
           'маракас': 'Maracas'
         };
         
-        // First try exact matches
-        let matchedInstrument = instrumentMap[command];
+        // First try exact matches on cleaned instrument command
+        let matchedInstrument = instrumentMap[commandInstrument];
         
         // Then try partial matches
         if (!matchedInstrument) {
           for (const [keyword, instrument] of Object.entries(instrumentMap)) {
-            if (command.includes(keyword)) {
+            if (commandInstrument.includes(keyword)) {
               matchedInstrument = instrument;
               break;
             }
@@ -334,9 +579,10 @@ export default function GrooveApp() {
         }
         
         if (matchedInstrument) {
-          console.log(`✅ Voice matched: ${matchedInstrument}`);
-          addTrack(matchedInstrument);
-          setHistory(prev => [...prev, `🎤 Voice added: ${matchedInstrument}`]);
+          const displayName = commandStyle ? `${commandStyle} ${matchedInstrument}` : matchedInstrument;
+          console.log(`✅ Voice matched: ${matchedInstrument} ${commandStyle ? `with style: ${commandStyle}` : ''}`);
+          addTrack(matchedInstrument, commandStyle);
+          setHistory(prev => [...prev, `🎤 Voice added: ${displayName}`]);
         } else {
           console.log(`❌ Voice command not recognized: "${command}"`);
           setHistory(prev => [...prev, `🎤 Couldn't understand: "${command}"`]);
@@ -417,6 +663,9 @@ export default function GrooveApp() {
               <div className="text-sm text-neutral-600 bg-neutral-100 px-3 py-1 rounded-full">
                 4/4
               </div>
+              <div className="text-xs text-neutral-500 bg-neutral-50 px-2 py-1 rounded" title="Track duration for complete musical phrases">
+                {getCurrentDuration()}
+              </div>
             </div>
           </div>
           {tracks.length === 0 ? (
@@ -493,15 +742,56 @@ export default function GrooveApp() {
                       <div className="mt-2">
                         <audio
                           ref={(el) => {
-                            if (el) audioRefs.current.set(track.id, el);
-                            else audioRefs.current.delete(track.id);
+                            if (el) {
+                              audioRefs.current.set(track.id, el);
+                              
+                              // Set up seamless looping only if not already set
+                              if (!loopHandlers.current.has(track.id)) {
+                                const loopHandler = () => {
+                                  console.log(`🔄 Track ${track.name} (${track.id}) ended, restarting loop`);
+                                  el.currentTime = 0;
+                                  el.play().catch((err) => {
+                                    console.error(`❌ Loop restart failed for ${track.name}:`, err);
+                                  });
+                                  console.log(`✅ Track ${track.name} loop restarted`);
+                                };
+                                
+                                loopHandlers.current.set(track.id, loopHandler);
+                                el.addEventListener('ended', loopHandler);
+                              }
+                              
+                              // Log duration when metadata loads
+                              el.addEventListener('loadedmetadata', () => {
+                                console.log(`📏 Track ${track.name} duration: ${el.duration.toFixed(2)} seconds`);
+                                if (el.duration > 12) {
+                                  console.warn(`⚠️ Track ${track.name} is ${el.duration.toFixed(2)}s - should be ~10s!`);
+                                }
+                              });
+                              
+                            } else {
+                              // Cleanup when element is removed
+                              const handler = loopHandlers.current.get(track.id);
+                              if (handler) {
+                                const audio = audioRefs.current.get(track.id);
+                                if (audio) {
+                                  audio.removeEventListener('ended', handler);
+                                }
+                                loopHandlers.current.delete(track.id);
+                              }
+                              audioRefs.current.delete(track.id);
+                            }
                           }}
                           muted={track.muted}
                           controls
-                          loop
                           src={track.url}
-                          className="w-full h-8"
+                          className={`w-full h-8 ${isPlayingAll ? 'opacity-50 pointer-events-none' : ''}`}
+                          style={isPlayingAll ? { pointerEvents: 'none' } : {}}
                         />
+                        {isPlayingAll && (
+                          <div className="text-xs text-white/60 text-center mt-1">
+                            🎧 Playing with Web Audio (seamless loops)
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="mt-2 text-center">
@@ -692,7 +982,7 @@ export default function GrooveApp() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5 }}
             >
-              Or try saying: &ldquo;Add piano&rdquo;, &ldquo;Добавь барабаны&rdquo;, &ldquo;Sax please&rdquo;
+              Try saying: &ldquo;Jazz drums&rdquo;, &ldquo;Rock guitar&rdquo;, &ldquo;Acoustic piano&rdquo;, &ldquo;Funky bass&rdquo;
             </motion.p>
           )}
         </CardContent>

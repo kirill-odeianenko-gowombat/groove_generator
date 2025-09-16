@@ -899,7 +899,7 @@ export default function GrooveApp() {
           <h2 className="font-semibold mb-6 text-white/90 text-center">
             {tracks.length === 0 ? "Choose your first instrument" : "Add more instruments"}
           </h2>
-          <div className={`grid gap-4 place-items-center ${
+          <div className={`grid gap-x-4 gap-y-8 place-items-center ${
             tracks.length === 0 ? "grid-cols-4" : "grid-cols-4 sm:grid-cols-6"
           }`}>
             {instrumentDefs.map(({ name, emoji }) => (

@@ -488,7 +488,7 @@ export default function GrooveApp() {
         console.log(`🎤 Voice command: "${command}"`);
         
         // Parse style and instrument from command
-        function parseVoiceCommand(command: string): { instrument?: string; style?: string } {
+        function parseVoiceCommand(command: string): { instrument: string; style?: string } {
           // Common musical styles
           const styles = [
             'jazz', 'rock', 'blues', 'funk', 'funky', 'classical', 'acoustic', 'electric',
@@ -509,8 +509,9 @@ export default function GrooveApp() {
             }
           }
           
+          const instrument = (remainingCommand || command).trim();
           return { 
-            instrument: remainingCommand || command, 
+            instrument, 
             style: detectedStyle || undefined 
           };
         }
@@ -566,12 +567,13 @@ export default function GrooveApp() {
         };
         
         // First try exact matches on cleaned instrument command
-        let matchedInstrument = instrumentMap[commandInstrument];
+        const cleanedInstrument = (commandInstrument || "").trim();
+        let matchedInstrument = cleanedInstrument ? instrumentMap[cleanedInstrument] : undefined;
         
         // Then try partial matches
         if (!matchedInstrument) {
           for (const [keyword, instrument] of Object.entries(instrumentMap)) {
-            if (commandInstrument.includes(keyword)) {
+            if (cleanedInstrument.includes(keyword)) {
               matchedInstrument = instrument;
               break;
             }

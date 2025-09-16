@@ -23,6 +23,10 @@ Groove Generator — це веб‑застосунок на Next.js для шв
 Оптимальний формат: MP3 44.1k/128kbps — економить трафік і пришвидшує завантаження без повторних запитів.
 Стійке розпізнавання голосу: синоніми/варіації (EN/RU) зменшують «порожні» спроби генерації.
 
+### Де потестувати
+Спробувати застосунок онлайн: [groovegenerator.vercel.app](https://groovegenerator.vercel.app/)
+
+
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 

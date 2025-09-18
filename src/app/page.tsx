@@ -240,11 +240,11 @@ export default function GrooveApp() {
       
       if (existingInstruments.length === 0) {
         // First track - establish the groove
-        prompt = `Generate a diverse 8-10 second SOLO ${instrumentWithStyle} loop at ${currentBPM} BPM, 4/4 time signature${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, dynamic changes, fills, and variations - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds. MUSICAL COMPLEXITY: ${complexityInstruction} Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, as if recorded in isolation for layering. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} groove from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, fills, dynamics, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
+        prompt = `Generate a diverse 10 second SOLO ${instrumentWithStyle} loop at ${currentBPM} BPM, 4/4 time signature${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, dynamic changes, fills, and variations - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds. MUSICAL COMPLEXITY: ${complexityInstruction} Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, as if recorded in isolation for layering. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} groove from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, fills, dynamics, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
       } else {
         // Additional tracks - match existing groove
         const contextInstruments = existingInstruments.join(", ");
-        prompt = `Generate a diverse 8-10 second SOLO ${instrumentWithStyle} loop that complements existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, counter-melodies, harmonic variations, and complementary fills - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds that work with existing tracks. MUSICAL COMPLEXITY: ${complexityInstruction} while complementing existing instruments. Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments mixed in, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, recorded in isolation for perfect layering with other tracks. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} part from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, complementary fills, harmonic variations, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
+        prompt = `Generate a diverse 10 second SOLO ${instrumentWithStyle} loop that complements existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, counter-melodies, harmonic variations, and complementary fills - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds that work with existing tracks. MUSICAL COMPLEXITY: ${complexityInstruction} while complementing existing instruments. Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments mixed in, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, recorded in isolation for perfect layering with other tracks. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} part from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, complementary fills, harmonic variations, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
       }
       
       // Calculate optimal duration for current BPM to get complete musical phrases
@@ -362,14 +362,21 @@ export default function GrooveApp() {
 
   async function playAll() {
     try {
-      console.log("🎵 PlayAll called, tracks available:", tracks.filter(t => t.url).length);
+      console.log("🎵 PlayAll function started");
+      console.log("🎵 Total tracks:", tracks.length);
+      console.log("🎵 Tracks with URLs:", tracks.filter(t => t.url).length);
+      console.log("🎵 Web Audio supported:", webAudioSupported);
+      console.log("🎵 AudioContext state:", audioContextRef.current?.state);
 
       // Check if we have any tracks to play
       const playableTracks = tracks.filter(t => t.url);
       if (playableTracks.length === 0) {
         console.warn("⚠️ No tracks available to play");
+        alert("No tracks loaded yet. Please add some tracks first.");
         return;
       }
+
+      console.log("🎵 Proceeding with playback of", playableTracks.length, "tracks");
 
       // First, stop all HTML5 audio to prevent conflicts
       const refs = audioRefs.current;
@@ -952,7 +959,15 @@ export default function GrooveApp() {
                 
                 {/* Control Buttons */}
                 <div className="flex gap-3">
-                  <Button onClick={playAll} className="glass-pill px-6 py-3 text-white flex items-center gap-2 shadow">
+                  <Button
+                    onClick={() => {
+                      console.log("🎯 Play All button clicked!");
+                      console.log("Current tracks:", tracks.length);
+                      console.log("Tracks with URLs:", tracks.filter(t => t.url).length);
+                      playAll();
+                    }}
+                    className="glass-pill px-6 py-3 text-white flex items-center gap-2 shadow"
+                  >
                     <Play size={18} /> Play All
                   </Button>
                   <Button onClick={stopAll} className="glass-pill px-6 py-3 text-white flex items-center gap-2 shadow">

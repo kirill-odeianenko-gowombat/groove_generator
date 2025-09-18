@@ -152,34 +152,46 @@ export default function GrooveApp() {
   // Play track with Web Audio API (seamless looping)
   function playTrackWebAudio(trackId: number, muted: boolean = false): void {
     if (!audioContextRef.current || !webAudioSupported) return;
-    
+
     const audioBuffer = audioBuffersRef.current.get(trackId);
     if (!audioBuffer) return;
-    
+
     // Stop existing source if playing
     const existingSource = sourceNodesRef.current.get(trackId);
     if (existingSource) {
       existingSource.stop();
       sourceNodesRef.current.delete(trackId);
     }
-    
+
     // Create new source node
     const source = audioContextRef.current.createBufferSource();
     source.buffer = audioBuffer;
     source.loop = true; // Web Audio seamless loop!
-    
+
+    // Limit loop to 8-10 seconds for diverse, consistent looping
+    const MAX_LOOP_DURATION = 10.0;
+    const MIN_LOOP_DURATION = 8.0;
+
+    if (audioBuffer.duration > MAX_LOOP_DURATION) {
+      source.loopStart = 0;
+      source.loopEnd = MAX_LOOP_DURATION;
+      console.log(`🔄 Limited Web Audio diverse loop for track ${trackId} to ${MAX_LOOP_DURATION}s (original: ${audioBuffer.duration.toFixed(2)}s)`);
+    } else if (audioBuffer.duration >= MIN_LOOP_DURATION) {
+      console.log(`✅ Web Audio diverse loop for track ${trackId}: ${audioBuffer.duration.toFixed(2)}s (perfect range)`);
+    }
+
     // Create gain node for volume control
     const gainNode = audioContextRef.current.createGain();
     gainNode.gain.value = muted ? 0 : 1;
-    
+
     // Connect: source -> gain -> destination
     source.connect(gainNode);
     gainNode.connect(audioContextRef.current.destination);
-    
+
     // Store references
     sourceNodesRef.current.set(trackId, source);
     gainNodesRef.current.set(trackId, gainNode);
-    
+
     // Start playing
     source.start();
     console.log(`🎵 Started Web Audio seamless loop for track ${trackId}`);
@@ -219,20 +231,28 @@ export default function GrooveApp() {
       
       const styleDescription = style ? ` in ${style} style` : '';
       const instrumentWithStyle = style ? `${style} ${inst.toLowerCase()}` : inst.toLowerCase();
+
+      // Different complexity instructions for drums vs melodic instruments
+      const isDrumInstrument = inst.toLowerCase().includes('drum') || inst.toLowerCase().includes('maracas');
+      const complexityInstruction = isDrumInstrument
+        ? "Use a minimum of 10 different drum sounds/percussion elements throughout the loop - include kick, snare, hi-hats (open/closed), crash cymbals, ride, toms (high/mid/low), floor tom, rim shots, and other percussion elements to create maximum rhythmic and timbral diversity."
+        : "Use a minimum of 10 different notes/pitches throughout the loop - include various octaves, chord tones, passing notes, chromatic runs, arpeggios, and melodic intervals to create maximum harmonic and melodic diversity.";
       
       if (existingInstruments.length === 0) {
         // First track - establish the groove
-        prompt = `Generate ONLY a clean ${instrumentWithStyle} track at ${currentBPM} BPM, 4/4 time signature${styleDescription}. Create musical variation with different patterns, fills, and progressions - not just repetitive loops. ISOLATED ${inst.toLowerCase()} ONLY - no other instruments, no drums, no bass, no melody unless this IS the melody instrument. Pure ${inst.toLowerCase()} sound only. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} groove from the very first moment. IMPORTANT: Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping.`;
+        prompt = `Generate a diverse 8-10 second SOLO ${instrumentWithStyle} loop at ${currentBPM} BPM, 4/4 time signature${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, dynamic changes, fills, and variations - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds. MUSICAL COMPLEXITY: ${complexityInstruction} Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, as if recorded in isolation for layering. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} groove from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, fills, dynamics, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
       } else {
         // Additional tracks - match existing groove
         const contextInstruments = existingInstruments.join(", ");
-        prompt = `Generate ONLY a clean ${instrumentWithStyle} track that fits with existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time${styleDescription}. Create musical variation with complementary patterns, counter-melodies, and harmonic support - not just repetitive loops. IMPORTANT: Generate ISOLATED ${inst.toLowerCase()} ONLY - no other instruments mixed in, no accompaniment. Pure ${inst.toLowerCase()} track that will layer with existing instruments. START IMMEDIATELY - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} part from the very first moment. IMPORTANT: Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping.`;
+        prompt = `Generate a diverse 8-10 second SOLO ${instrumentWithStyle} loop that complements existing ${contextInstruments} at ${currentBPM} BPM, 4/4 time${styleDescription}. Create a VARIED and INTERESTING loopable pattern with multiple musical phrases, counter-melodies, harmonic variations, and complementary fills - NOT repetitive. The loop should be musically rich and diverse, containing at least 2-4 different patterns or variations within the 8-10 seconds that work with existing tracks. MUSICAL COMPLEXITY: ${complexityInstruction} while complementing existing instruments. Avoid repetitive single ${isDrumInstrument ? 'drum hits' : 'notes'} or simple patterns. CRITICAL: ONLY ${inst.toLowerCase().toUpperCase()} SOUND - absolutely NO other instruments mixed in, NO backing tracks, NO accompaniment, NO drums (unless this IS drums), NO bass (unless this IS bass), NO piano, NO guitar, NO vocals, NO harmony instruments. This must be a COMPLETELY ISOLATED ${inst.toLowerCase()} track - pure ${inst.toLowerCase()} sound only, recorded in isolation for perfect layering with other tracks. START IMMEDIATELY from first millisecond - no count-in, no intro, no drum stick clicks, no silence at beginning. Begin playing the ${instrumentWithStyle} part from the very first moment. Create MUSICAL DIVERSITY within the loop - different patterns, complementary fills, harmonic variations, and use ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}. IMPORTANT: Keep it 8-10 seconds long. Maintain CONSISTENT VOLUME throughout - no fade-in, no fade-out, no volume changes. End abruptly at full volume for seamless looping. DURATION: 8-10 seconds with maximum musical and ${isDrumInstrument ? 'rhythmic/timbral' : 'melodic/harmonic'} variation. SOLO INSTRUMENT ONLY.`;
       }
       
       // Calculate optimal duration for current BPM to get complete musical phrases
       const optimalDurationSeconds = calculateOptimalDuration(currentBPM);
-      
-      const durationMs = Math.round(optimalDurationSeconds * 1000);
+
+      // Force consistent duration - 8-10 seconds for diverse loops
+      const CONSISTENT_DURATION = 10.0; // Target 10 second duration for diverse loops
+      const durationMs = Math.round(CONSISTENT_DURATION * 1000);
       
       const requestBody = {
         prompt: prompt,
@@ -240,8 +260,15 @@ export default function GrooveApp() {
         model_id: "music_v1", // Explicitly specify model
         output_format: "mp3_44100_128" // Explicitly specify output format
       };
-      
-      console.log(`🎵 ElevenLabs Request for ${inst}:`, requestBody);
+
+      console.log(`🎵 ElevenLabs Request for SOLO ${inst}:`);
+      console.log(`   - BPM: ${currentBPM}`);
+      console.log(`   - Optimal duration (calculated): ${optimalDurationSeconds}s`);
+      console.log(`   - Target duration: ${CONSISTENT_DURATION}s (${durationMs}ms) - diverse loop`);
+      console.log(`   - ISOLATION: Only ${inst.toUpperCase()} sound, no other instruments`);
+      console.log(`   - COMPLEXITY: ${isDrumInstrument ? '10+ different drum/percussion sounds' : '10+ different notes/pitches'}`);
+      console.log(`   - Request includes: musical diversity, variations, fills, complexity`);
+      console.log(`   - Request body:`, requestBody);
       
       const response = await fetch("https://api.elevenlabs.io/v1/music/compose", {
         method: "POST",
@@ -262,8 +289,25 @@ export default function GrooveApp() {
       
       const blob = await response.blob();
       console.log(`📁 Generated blob size: ${blob.size} bytes (${(blob.size / 1024).toFixed(2)} KB)`);
-      
+
       const audioUrl = URL.createObjectURL(blob);
+
+      // Check actual audio duration and trim if needed
+      const tempAudio = new Audio(audioUrl);
+      tempAudio.addEventListener('loadedmetadata', () => {
+        const actualDuration = tempAudio.duration;
+        console.log(`⏱️ ${inst} track durations:`);
+        console.log(`   - Requested: ${CONSISTENT_DURATION.toFixed(2)}s`);
+        console.log(`   - Actual: ${actualDuration.toFixed(2)}s`);
+        console.log(`   - Difference: ${(actualDuration - CONSISTENT_DURATION).toFixed(2)}s`);
+
+        if (actualDuration > CONSISTENT_DURATION + 2) {
+          console.warn(`⚠️ Track ${inst} is too long (${actualDuration.toFixed(2)}s), will be limited to ${CONSISTENT_DURATION}s diverse loop during playback`);
+        } else if (actualDuration >= 8 && actualDuration <= 12) {
+          console.log(`✅ Track ${inst} duration is good for diverse looping: ${actualDuration.toFixed(2)}s`);
+        }
+      });
+
       console.log(`✅ ${inst} track generated successfully`);
       
       return audioUrl;
@@ -317,73 +361,125 @@ export default function GrooveApp() {
   }
 
   async function playAll() {
-    // First, stop all HTML5 audio to prevent conflicts
-    const refs = audioRefs.current;
-    tracks.forEach((t) => {
-      const audio = refs.get(t.id);
-      if (audio && t.url) {
-        audio.pause();
-        audio.currentTime = 0;
+    try {
+      console.log("🎵 PlayAll called, tracks available:", tracks.filter(t => t.url).length);
+
+      // Check if we have any tracks to play
+      const playableTracks = tracks.filter(t => t.url);
+      if (playableTracks.length === 0) {
+        console.warn("⚠️ No tracks available to play");
+        return;
       }
-    });
-    
-    // Resume AudioContext if suspended (required by browsers)
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      await audioContextRef.current.resume();
-    }
-    
-    setIsPlayingAll(true);
-    
-    if (webAudioSupported) {
-      // Use Web Audio API for perfect seamless looping
-      console.log(`🎧 Starting ${tracks.length} tracks with Web Audio API`);
-      const startTime = performance.now();
-      
-      tracks.forEach((track) => {
-        if (track.url) {
-          playTrackWebAudio(track.id, !!track.muted);
-        }
-      });
-      
-      console.log(`🎵 Started ${tracks.length} Web Audio tracks synchronously at ${startTime}`);
-    } else {
-      // Fallback to HTML5 audio
-      const audioElements: HTMLAudioElement[] = [];
-      
-      // Prepare all audio elements
+
+      // First, stop all HTML5 audio to prevent conflicts
+      const refs = audioRefs.current;
       tracks.forEach((t) => {
         const audio = refs.get(t.id);
         if (audio && t.url) {
+          audio.pause();
           audio.currentTime = 0;
-          audio.muted = !!t.muted;
-          audioElements.push(audio);
         }
       });
-      
-      // Synchronize start - all tracks begin at exactly the same time
-      if (audioElements.length > 0) {
-        try {
-          // Start all simultaneously using Promise.all
-          await Promise.all(
-            audioElements.map(audio => {
-              return new Promise<void>((resolve) => {
-                audio.addEventListener('canplaythrough', () => resolve(), { once: true });
-                if (audio.readyState >= 4) resolve(); // Already loaded
+
+      // Resume AudioContext if suspended (required by browsers)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        console.log("🎧 Resuming suspended AudioContext");
+        await audioContextRef.current.resume();
+      }
+
+      setIsPlayingAll(true);
+
+      if (webAudioSupported && audioContextRef.current) {
+        // Use Web Audio API for perfect seamless looping
+        console.log(`🎧 Starting ${playableTracks.length} tracks with Web Audio API`);
+        const startTime = performance.now();
+
+        // Check if audio buffers are loaded
+        let buffersLoaded = 0;
+        for (const track of playableTracks) {
+          if (audioBuffersRef.current.has(track.id)) {
+            buffersLoaded++;
+          } else if (track.url) {
+            // Load buffer if not already loaded
+            console.log(`📥 Loading missing audio buffer for ${track.name}`);
+            await loadAudioBuffer(track.id, track.url);
+            if (audioBuffersRef.current.has(track.id)) {
+              buffersLoaded++;
+            }
+          }
+        }
+
+        console.log(`📊 Audio buffers loaded: ${buffersLoaded}/${playableTracks.length}`);
+
+        // Play tracks that have loaded buffers
+        playableTracks.forEach((track) => {
+          if (track.url && audioBuffersRef.current.has(track.id)) {
+            playTrackWebAudio(track.id, !!track.muted);
+          } else {
+            console.warn(`⚠️ Cannot play ${track.name}: buffer not loaded`);
+          }
+        });
+
+        console.log(`🎵 Started ${buffersLoaded} Web Audio tracks synchronously at ${startTime}`);
+      } else {
+        // Fallback to HTML5 audio
+        console.log(`🎵 Using HTML5 audio fallback for ${playableTracks.length} tracks`);
+        const audioElements: HTMLAudioElement[] = [];
+
+        // Prepare all audio elements
+        playableTracks.forEach((t) => {
+          const audio = refs.get(t.id);
+          if (audio && t.url) {
+            audio.currentTime = 0;
+            audio.muted = !!t.muted;
+            audioElements.push(audio);
+          }
+        });
+
+        // Synchronize start - all tracks begin at exactly the same time
+        if (audioElements.length > 0) {
+          try {
+            // Wait for all audio elements to be ready
+            await Promise.all(
+              audioElements.map(audio => {
+                return new Promise<void>((resolve, reject) => {
+                  const timeout = setTimeout(() => {
+                    reject(new Error(`Timeout loading ${audio.src}`));
+                  }, 5000);
+
+                  audio.addEventListener('canplaythrough', () => {
+                    clearTimeout(timeout);
+                    resolve();
+                  }, { once: true });
+
+                  if (audio.readyState >= 4) {
+                    clearTimeout(timeout);
+                    resolve(); // Already loaded
+                  }
+                });
+              })
+            );
+
+            // Play all at the exact same moment
+            const startTime = performance.now();
+            const playPromises = audioElements.map(audio => {
+              return audio.play().catch(err => {
+                console.error(`Failed to play audio: ${err.message}`);
+                return Promise.resolve();
               });
-            })
-          );
-          
-          // Play all at the exact same moment
-          const startTime = performance.now();
-          audioElements.forEach(audio => {
-            audio.play().catch(() => {}); // Ignore play errors
-          });
-          
-          console.log(`🎵 Started ${audioElements.length} HTML5 tracks synchronously at ${startTime}`);
-        } catch (err) {
-          console.error("Sync playback error:", err);
+            });
+
+            await Promise.all(playPromises);
+            console.log(`🎵 Started ${audioElements.length} HTML5 tracks synchronously at ${startTime}`);
+          } catch (err) {
+            console.error("Sync playback error:", err);
+            // Don't return here - still set playing state
+          }
         }
       }
+    } catch (err) {
+      console.error("PlayAll error:", err);
+      setIsPlayingAll(false);
     }
   }
 
@@ -749,24 +845,53 @@ export default function GrooveApp() {
                               
                               // Set up seamless looping only if not already set
                               if (!loopHandlers.current.has(track.id)) {
+                                const MAX_HTML5_DURATION = 10.0;
+                                let loopTimeout: NodeJS.Timeout | null = null;
+
                                 const loopHandler = () => {
                                   console.log(`🔄 Track ${track.name} (${track.id}) ended, restarting loop`);
                                   el.currentTime = 0;
                                   el.play().catch((err) => {
                                     console.error(`❌ Loop restart failed for ${track.name}:`, err);
                                   });
+
+                                  // Set timeout to force restart at 10s if track is longer
+                                  if (el.duration > MAX_HTML5_DURATION) {
+                                    if (loopTimeout) clearTimeout(loopTimeout);
+                                    loopTimeout = setTimeout(() => {
+                                      if (!el.paused && el.currentTime > MAX_HTML5_DURATION) {
+                                        console.log(`⏰ Force restart HTML5 track ${track.name} at ${MAX_HTML5_DURATION}s`);
+                                        el.currentTime = 0;
+                                        el.play().catch(() => {});
+                                      }
+                                    }, MAX_HTML5_DURATION * 1000);
+                                  }
+
                                   console.log(`✅ Track ${track.name} loop restarted`);
                                 };
                                 
+                                // Also set up timeupdate listener to force loop at exactly 10s
+                                const timeUpdateHandler = () => {
+                                  if (el.currentTime >= MAX_HTML5_DURATION && el.duration > MAX_HTML5_DURATION) {
+                                    console.log(`⏰ Force loop HTML5 track ${track.name} at ${el.currentTime.toFixed(2)}s`);
+                                    el.currentTime = 0;
+                                  }
+                                };
+
                                 loopHandlers.current.set(track.id, loopHandler);
                                 el.addEventListener('ended', loopHandler);
+                                el.addEventListener('timeupdate', timeUpdateHandler);
                               }
                               
                               // Log duration when metadata loads
                               el.addEventListener('loadedmetadata', () => {
                                 console.log(`📏 Track ${track.name} duration: ${el.duration.toFixed(2)} seconds`);
-                                if (el.duration > 12) {
-                                  console.warn(`⚠️ Track ${track.name} is ${el.duration.toFixed(2)}s - should be ~10s!`);
+                                if (el.duration >= 8 && el.duration <= 12) {
+                                  console.log(`✅ Track ${track.name} has good duration for diverse looping: ${el.duration.toFixed(2)}s`);
+                                } else if (el.duration > 12) {
+                                  console.warn(`⚠️ Track ${track.name} is ${el.duration.toFixed(2)}s - will be limited to 10s diverse loop!`);
+                                } else {
+                                  console.warn(`⚠️ Track ${track.name} is too short: ${el.duration.toFixed(2)}s - should be 8-10s for diverse patterns!`);
                                 }
                               });
                               
